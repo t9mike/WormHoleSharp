@@ -76,7 +76,8 @@ namespace WormHoleSharp
 			}
 
 			try {
-				File.WriteAllText (filePath, Newtonsoft.Json.JsonConvert.SerializeObject (messageObject));
+                File.WriteAllText (filePath, Newtonsoft.Json.JsonConvert.SerializeObject (messageObject, 
+                                                                                          new Newtonsoft.Json.JsonSerializerSettings { ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore }));
 				this.SendNotificationForMessageWithIdentifier (identifier);
 			} catch (Exception ex) {
 				Console.WriteLine (ex);
