@@ -5,158 +5,184 @@ using System.Collections.Generic;
 
 namespace WormHoleSharp
 {
-	public class Wormhole : NSObject
-	{
-		// #include <CoreFoundation/CoreFoundation.h>
-		const string WormholeNotificationName = "WormholeNotificationName";
+    public class Wormhole : NSObject
+    {
+        // #include <CoreFoundation/CoreFoundation.h>
+        const string WormholeNotificationName = "WormholeNotificationName";
 
-		public string ApplicationGroupIdentifier { get; set; }
+        public string ApplicationGroupIdentifier { get; set; }
 
-		public string Directory { get; set; }
+        public string Directory { get; set; }
 
-		public NSFileManager FileManager { get; set; }
-
-
-		public Wormhole (string identifier, string directory)
-		{
-
-			this.ApplicationGroupIdentifier = identifier;
-			this.Directory = directory;
-			this.FileManager = new NSFileManager ();
-			NSNotificationCenter.DefaultCenter.AddObserver ((NSString)WormholeNotificationName, DidReceiveMessageNotification);
-			CFNotificationCenter.DarwinCenter.NotificationChanged += wormholeNotificationCallback;
-		
-
-		}
-
-		protected override void Dispose (bool disposing)
-		{
-			base.Dispose (disposing);
-			NSNotificationCenter.DefaultCenter.RemoveObserver (this);
-			CFNotificationCenter.DarwinCenter.RemoveEveryObserver ();
-		}
-
-		string MessagePassingDirectoryPath ()
-		{
-			var appGroupContainer = FileManager.GetContainerUrl (ApplicationGroupIdentifier);
-			if (appGroupContainer == null)
-				throw new Exception ("App groups are not properly setup. Make sure you added the app group to the entitlements");
-			string appGroupContainerPath = appGroupContainer.Path;
-			string directoryPath = appGroupContainerPath;
-			if (this.Directory != null) {
-				directoryPath = Path.Combine (appGroupContainerPath, this.Directory);
-			}
-
-			this.FileManager.CreateDirectory (directoryPath, true, null);
-			return directoryPath;
-		}
-
-		string FilePathForIdentifier (string identifier)
-		{
-			if (identifier == null || identifier.Length == 0) {
-				return null;
-			}
-
-			string directoryPath = this.MessagePassingDirectoryPath ();
-			string fileName = string.Format ("{0}.archive", identifier);
-			string filePath = Path.Combine (directoryPath, fileName);
-			return filePath;
-		}
-
-		void WriteMessageObjectToFileWithIdentifier (object messageObject, string identifier)
-		{
-			if (identifier == null) {
-				return;
-			}
+        public NSFileManager FileManager { get; set; }
 
 
-			string filePath = this.FilePathForIdentifier (identifier);
-			if (filePath == null) {
-				return;
-			}
+        public Wormhole(string identifier, string directory)
+        {
 
-			try {
-                File.WriteAllText (filePath, Newtonsoft.Json.JsonConvert.SerializeObject (messageObject, 
-                                                                                          new Newtonsoft.Json.JsonSerializerSettings { ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore }));
-				this.SendNotificationForMessageWithIdentifier (identifier);
-			} catch (Exception ex) {
-				Console.WriteLine (ex);
-			}
+            this.ApplicationGroupIdentifier = identifier;
+            this.Directory = directory;
+            this.FileManager = new NSFileManager();
+            NSNotificationCenter.DefaultCenter.AddObserver((NSString)WormholeNotificationName, DidReceiveMessageNotification);
+            CFNotificationCenter.DarwinCenter.NotificationChanged += wormholeNotificationCallback;
 
 
-		}
+        }
 
-		string MessageObjectFromFileWithIdentifier (string identifier)
-		{
-			try {
-				if (identifier == null) {
-					return null;
-				}
-				return File.ReadAllText (this.FilePathForIdentifier (identifier));
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            NSNotificationCenter.DefaultCenter.RemoveObserver(this);
+            CFNotificationCenter.DarwinCenter.RemoveEveryObserver();
+        }
 
-			} catch (Exception ex) {
-				Console.WriteLine (ex);
-			}
+        string MessagePassingDirectoryPath()
+        {
+            var appGroupContainer = FileManager.GetContainerUrl(ApplicationGroupIdentifier);
+            if (appGroupContainer == null)
+                throw new Exception("App groups are not properly setup. Make sure you added the app group to the entitlements");
+            string appGroupContainerPath = appGroupContainer.Path;
+            string directoryPath = appGroupContainerPath;
+            if (this.Directory != null)
+            {
+                directoryPath = Path.Combine(appGroupContainerPath, this.Directory);
+            }
 
-			return string.Empty;
-		}
+            this.FileManager.CreateDirectory(directoryPath, true, null);
+            return directoryPath;
+        }
 
-		void DeleteFileForIdentifier (string identifier)
-		{
-			NSError error;
-			this.FileManager.Remove (this.FilePathForIdentifier (identifier), out error);
-		}
+        string FilePathForIdentifier(string identifier)
+        {
+            if (identifier == null || identifier.Length == 0)
+            {
+                return null;
+            }
 
-		void SendNotificationForMessageWithIdentifier (string identifier)
-		{
-			CFNotificationCenter.DarwinCenter.PostNotification (identifier);
-		}
+            string directoryPath = this.MessagePassingDirectoryPath();
+            string fileName = string.Format("{0}.archive", identifier);
+            string filePath = Path.Combine(directoryPath, fileName);
+            return filePath;
+        }
 
-		void RegisterForNotificationsWithIdentifier (string identifier)
-		{
-			CFNotificationCenter.DarwinCenter.AddObserver (identifier);
-		}
-
-		void UnregisterForNotificationsWithIdentifier (string identifier)
-		{
-			CFNotificationCenter.DarwinCenter.RemoveNotificationObserver (identifier);
-		}
-
-		void wormholeNotificationCallback (object sender, CFNotificationCenter.NoticationEventArgs message)
-		{
-			NSNotificationCenter.DefaultCenter.PostNotificationName (WormholeNotificationName, null, NSDictionary.FromObjectAndKey ((NSString)message.Message, (NSString)"identifier"));
-		}
-
-		void DidReceiveMessageNotification (NSNotification notification)
-		{
-
-			var userInfo = notification.UserInfo;
-			var identifier = userInfo.ObjectForKey ((NSString)"identifier");
-			if (identifier == null)
-				return;
-			var id = identifier.ToString ();
-			var type = TypeForId (id);
-			if (type == null)
-				return;
-
-			var message = this.MessageObjectFromFileWithIdentifier (identifier.ToString ());
-			var messageObject = Newtonsoft.Json.JsonConvert.DeserializeObject (message, type);
-			this.InvokeActions (id, messageObject);
-
-		}
+        void WriteMessageObjectToFileWithIdentifier(object messageObject, string identifier)
+        {
+            if (identifier == null)
+            {
+                return;
+            }
 
 
-		public void PassMessage (string identifier, object message)
-		{
-			this.WriteMessageObjectToFileWithIdentifier (message, identifier);
-		}
+            string filePath = this.FilePathForIdentifier(identifier);
+            if (filePath == null)
+            {
+                return;
+            }
 
-		public T MessageWithIdentifier<T> (string identifier)
-		{
-			try {
-				var messageObject = this.MessageObjectFromFileWithIdentifier (identifier);
+            try
+            {
+#if PORTABLE_JSON
+                string json = PortableJson.Xamarin.JsonSerializationHelper.Serialize(messageObject);
+#else
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(messageObject,
+                                                                          new Newtonsoft.Json.JsonSerializerSettings { ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore }));
 
-				return Newtonsoft.Json.JsonConvert.DeserializeObject<T> (messageObject);
+#endif
+                File.WriteAllText(filePath, json);
+                this.SendNotificationForMessageWithIdentifier(identifier);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+
+
+        }
+
+        string MessageObjectFromFileWithIdentifier(string identifier)
+        {
+            try
+            {
+                if (identifier == null)
+                {
+                    return null;
+                }
+                return File.ReadAllText(this.FilePathForIdentifier(identifier));
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+
+            return string.Empty;
+        }
+
+        void DeleteFileForIdentifier(string identifier)
+        {
+            NSError error;
+            this.FileManager.Remove(this.FilePathForIdentifier(identifier), out error);
+        }
+
+        void SendNotificationForMessageWithIdentifier(string identifier)
+        {
+            CFNotificationCenter.DarwinCenter.PostNotification(identifier);
+        }
+
+        void RegisterForNotificationsWithIdentifier(string identifier)
+        {
+            CFNotificationCenter.DarwinCenter.AddObserver(identifier);
+        }
+
+        void UnregisterForNotificationsWithIdentifier(string identifier)
+        {
+            CFNotificationCenter.DarwinCenter.RemoveNotificationObserver(identifier);
+        }
+
+        void wormholeNotificationCallback(object sender, CFNotificationCenter.NoticationEventArgs message)
+        {
+            NSNotificationCenter.DefaultCenter.PostNotificationName(WormholeNotificationName, null, NSDictionary.FromObjectAndKey((NSString)message.Message, (NSString)"identifier"));
+        }
+
+        void DidReceiveMessageNotification(NSNotification notification)
+        {
+
+            var userInfo = notification.UserInfo;
+            var identifier = userInfo.ObjectForKey((NSString)"identifier");
+            if (identifier == null)
+                return;
+            var id = identifier.ToString();
+            var type = TypeForId(id);
+            if (type == null)
+                return;
+
+            var message = this.MessageObjectFromFileWithIdentifier(identifier.ToString());
+#if PORTABLE_JSON
+            var messageObject = PortableJson.Xamarin.JsonSerializationHelper.Deserialize(message, type);
+#else
+            var messageObject = Newtonsoft.Json.JsonConvert.DeserializeObject(message, type);
+#endif
+            this.InvokeActions(id, messageObject);
+
+        }
+
+
+        public void PassMessage(string identifier, object message)
+        {
+            this.WriteMessageObjectToFileWithIdentifier(message, identifier);
+        }
+
+        public T MessageWithIdentifier<T>(string identifier)
+        {
+            try
+            {
+                var messageObject = this.MessageObjectFromFileWithIdentifier(identifier);
+
+#if PORTABLE_JSON
+                return PortableJson.Xamarin.JsonSerializationHelper.Deserialize<T>(messageObject);
+#else
+                return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(messageObject);
+#endif
 			} catch (Exception ex) {
 				Console.WriteLine (ex);
 			}
